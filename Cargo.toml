@@ -1,0 +1,26 @@
+[package]
+name = "cowsay-bot"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+dotenv = "*"
+tracing = "*"
+tracing-subscriber = "*"
+sys-info = "*"
+
+[dependencies.chrono]
+default-features = false
+features = ["clock"]
+version = "*"
+
+[dependencies.tokio]
+features = ["macros", "signal", "rt-multi-thread"]
+version = "*"
+
+[dependencies.serenity]
+default-features = false
+features = ["client", "gateway", "rustls_backend", "model", "cache"]
+version = "*"
