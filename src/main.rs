@@ -17,6 +17,7 @@ use serenity::{
 };
 
 use chrono::{offset::Utc, Timelike};
+use tracing::{error, info};
 
 struct Handler {
     is_loop_running: AtomicBool,
@@ -29,22 +30,22 @@ impl EventHandler for Handler {
             match cowsay() {
                 Ok(cowsay) => {
                     if let Err(why) = msg.reply(&ctx.http, format!("```{}```", cowsay)).await {
-                        eprintln!("Error sending message: {:?}", why);
+                        error!("Error sending message: {:?}", why);
                     }
                 }
-                Err(e) => eprintln!("Error executing commands: {:?}", e),
+                Err(e) => error!("Error executing commands: {:?}", e),
             }
         }
     }
 
     async fn ready(&self, _ctx: Context, ready: Ready) {
-        println!("{} is connected!", ready.user.name);
+        info!("{} is connected!", ready.user.name);
     }
 
     // We use the cache_ready event just in case some cache operation is required in whatever use
     // case you have for this.
     async fn cache_ready(&self, ctx: Context, _guilds: Vec<GuildId>) {
-        println!("Cache build successfully!");
+        info!("Cache build successfully!");
 
         // It's safe to clone Context, but Arc is cheaper for this use case.
         // Untested claim, just theoretically. :P
@@ -144,23 +145,25 @@ async fn message_cowsay(ctx: Arc<Context>) {
                 .say(&ctx, format!("```{}```", cowsay))
                 .await;
             if let Err(why) = message {
-                eprintln!("Error sending message: {:?}", why);
+                error!("Error sending message: {:?}", why);
             }
         }
-        Err(e) => eprintln!("Error executing commands: {:?}", e),
+        Err(e) => error!("Error executing commands: {:?}", e),
     }
 }
 
 async fn set_status_to_fortune(ctx: Arc<Context>) {
     match fortune() {
         Ok(v) => ctx.set_activity(Activity::playing(v)).await,
-        Err(e) => eprintln!("Error executing commands: {:?}", e),
+        Err(e) => error!("Error executing commands: {:?}", e),
     }
 }
 
 #[tokio::main]
 async fn main() {
     dotenv::dotenv().expect("Failed to find .env file");
+
+    tracing_subscriber::fmt::init();
 
     let token = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
 
@@ -176,6 +179,6 @@ async fn main() {
         .expect("Error creating client");
 
     if let Err(why) = client.start().await {
-        eprintln!("Client error: {:?}", why);
+        error!("Client error: {:?}", why);
     }
 }
