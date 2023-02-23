@@ -1,5 +1,5 @@
 use std::{
-    env,
+    env, io,
     process::{Command, Stdio},
     str,
     sync::{
@@ -11,7 +11,7 @@ use std::{
 
 use serenity::{
     async_trait,
-    model::prelude::{Activity, ChannelId, GuildId, Message, Ready},
+    model::prelude::{ChannelId, GuildId, Message, Ready},
     prelude::{Context, EventHandler, GatewayIntents},
     Client,
 };
@@ -26,8 +26,13 @@ struct Handler {
 impl EventHandler for Handler {
     async fn message(&self, ctx: Context, msg: Message) {
         if msg.content.starts_with("$fortune") {
-            if let Err(why) = msg.reply(&ctx.http, format!("```{}```", cowsay())).await {
-                eprintln!("Error sending message: {:?}", why);
+            match cowsay() {
+                Ok(cowsay) => {
+                    if let Err(why) = msg.reply(&ctx.http, format!("```{}```", cowsay)).await {
+                        eprintln!("Error sending message: {:?}", why);
+                    }
+                }
+                Err(e) => eprintln!("Error executing commands: {:?}", e),
             }
         }
     }
@@ -69,13 +74,13 @@ impl EventHandler for Handler {
             });
 
             // And of course, we can run more than one thread at different timings.
-            let ctx2 = Arc::clone(&ctx);
-            tokio::spawn(async move {
-                loop {
-                    set_status_to_fortune(Arc::clone(&ctx2)).await;
-                    tokio::time::sleep(Duration::from_secs(60)).await;
-                }
-            });
+            // let ctx2 = Arc::clone(&ctx);
+            // tokio::spawn(async move {
+            //     loop {
+            //         set_status_to_fortune(Arc::clone(&ctx2)).await;
+            //         tokio::time::sleep(Duration::from_secs(60)).await;
+            //     }
+            // });
 
             // Now that the loop is running, we set the bool to true
             self.is_loop_running.swap(true, Ordering::Relaxed);
@@ -83,32 +88,26 @@ impl EventHandler for Handler {
     }
 }
 
-fn cowsay() -> String {
+fn cowsay() -> io::Result<String> {
     let cowdir = Command::new("ls")
         .arg("/usr/share/cows")
         .stdout(Stdio::piped())
-        .spawn()
-        .expect("Failed to ls cowdir");
+        .spawn()?;
     let random_cow = Command::new("shuf")
         .arg("-n1")
         .stdin(cowdir.stdout.unwrap())
-        .output()
-        .expect("Failed to get random cow")
+        .output()?
         .stdout;
     let random_cow = match str::from_utf8(&random_cow) {
         Ok(v) => v,
         Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
     };
 
-    let fortune = Command::new("fortune")
-        .stdout(Stdio::piped())
-        .spawn()
-        .expect("Failed to execute fortune");
+    let fortune = Command::new("fortune").stdout(Stdio::piped()).spawn()?;
     let result = Command::new("cowsay")
         .args(["-f", random_cow.trim()])
         .stdin(fortune.stdout.unwrap())
-        .output()
-        .expect("Failed to execute cowsay")
+        .output()?
         .stdout;
 
     match String::from_utf8(result) {
@@ -116,7 +115,7 @@ fn cowsay() -> String {
             if v.len() > 2000 {
                 cowsay()
             } else {
-                v
+                Ok(v)
             }
         }
         Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
@@ -124,26 +123,17 @@ fn cowsay() -> String {
 }
 
 async fn message_cowsay(ctx: Arc<Context>) {
-    let message = ChannelId(1078089397972500481)
-        .say(&ctx, format!("```{}```", cowsay()))
-        .await;
-
-    if let Err(why) = message {
-        eprintln!("Error sending message: {:?}", why);
+    match cowsay() {
+        Ok(cowsay) => {
+            let message = ChannelId(1078089397972500481)
+                .say(&ctx, format!("```{}```", cowsay))
+                .await;
+            if let Err(why) = message {
+                eprintln!("Error sending message: {:?}", why);
+            }
+        }
+        Err(e) => eprintln!("Error executing commands: {:?}", e),
     }
-}
-
-async fn set_status_to_fortune(ctx: Arc<Context>) {
-    let fortune = Command::new("fortune")
-        .output()
-        .expect("Failed to execute fortune")
-        .stdout;
-    let fortune = match str::from_utf8(&fortune) {
-        Ok(v) => v,
-        Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
-    };
-
-    ctx.set_activity(Activity::playing(fortune)).await;
 }
 
 #[tokio::main]
