@@ -21,6 +21,5 @@ features = ["macros", "signal", "rt-multi-thread"]
 version = "*"
 
 [dependencies.serenity]
-default-features = false
-features = ["client", "gateway", "rustls_backend", "model", "cache"]
+features = ["cache", "framework", "standard_framework", "rustls_backend"]
 version = "*"

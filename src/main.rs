@@ -1,4 +1,5 @@
 use std::{
+    collections::HashSet,
     env, io,
     process::{Command, Stdio},
     str,
@@ -11,8 +12,17 @@ use std::{
 
 use serenity::{
     async_trait,
+    client::bridge::gateway::ShardManager,
+    framework::{
+        standard::{
+            macros::{command, group},
+            CommandResult,
+        },
+        StandardFramework,
+    },
+    http::Http,
     model::prelude::{Activity, ChannelId, GuildId, Message, Ready},
-    prelude::{Context, EventHandler, GatewayIntents},
+    prelude::{Context, EventHandler, GatewayIntents, Mutex, TypeMapKey},
     Client,
 };
 
@@ -25,48 +35,19 @@ struct Handler {
 
 #[async_trait]
 impl EventHandler for Handler {
-    async fn message(&self, ctx: Context, msg: Message) {
-        if msg.content.starts_with("$fortune") {
-            match cowsay() {
-                Ok(cowsay) => {
-                    if let Err(why) = msg.reply(&ctx.http, format!("```{}```", cowsay)).await {
-                        error!("Error sending message: {:?}", why);
-                    }
-                }
-                Err(e) => error!("Error executing commands: {:?}", e),
-            }
-        }
-    }
-
     async fn ready(&self, _ctx: Context, ready: Ready) {
         info!("{} is connected!", ready.user.name);
     }
 
-    // We use the cache_ready event just in case some cache operation is required in whatever use
-    // case you have for this.
     async fn cache_ready(&self, ctx: Context, _guilds: Vec<GuildId>) {
         info!("Cache build successfully!");
 
-        // It's safe to clone Context, but Arc is cheaper for this use case.
-        // Untested claim, just theoretically. :P
         let ctx = Arc::new(ctx);
 
-        // We need to check that the loop is not already running when this event triggers,
-        // as this event triggers every time the bot enters or leaves a guild, along every time the
-        // ready shard triggers.
-        //
-        // An AtomicBool is used because it doesn't require a mutable reference to be changed, as
-        // we don't have one due to self being an immutable reference.
         if !self.is_loop_running.load(Ordering::Relaxed) {
-            // We have to clone the Arc, as it gets moved into the new thread.
             let ctx1 = Arc::clone(&ctx);
-            // tokio::spawn creates a new green thread that can run in parallel with the rest of
-            // the application.
             tokio::spawn(async move {
                 loop {
-                    // We clone Context again here, because Arc is owned, so it moves to the new
-                    // function.
-                    // We check if it is the top of the hour
                     if Utc::now().time().minute() == 0 {
                         message_cowsay(Arc::clone(&ctx1)).await;
                     }
@@ -74,7 +55,6 @@ impl EventHandler for Handler {
                 }
             });
 
-            // And of course, we can run more than one thread at different timings.
             let ctx2 = Arc::clone(&ctx);
             tokio::spawn(async move {
                 loop {
@@ -83,19 +63,18 @@ impl EventHandler for Handler {
                 }
             });
 
-            // Now that the loop is running, we set the bool to true
             self.is_loop_running.swap(true, Ordering::Relaxed);
         }
     }
 }
 
-fn fortune() -> io::Result<String> {
+fn get_fortune() -> io::Result<String> {
     let result = Command::new("fortune").output()?.stdout;
 
     match String::from_utf8(result) {
         Ok(v) => {
             if v.len() > 2000 {
-                fortune()
+                get_fortune()
             } else {
                 Ok(v)
             }
@@ -104,7 +83,7 @@ fn fortune() -> io::Result<String> {
     }
 }
 
-fn cowsay() -> io::Result<String> {
+fn get_cowsay() -> io::Result<String> {
     let cowdir = Command::new("ls")
         .arg("/usr/share/cows")
         .stdout(Stdio::piped())
@@ -129,7 +108,7 @@ fn cowsay() -> io::Result<String> {
     match String::from_utf8(result) {
         Ok(v) => {
             if v.len() > 2000 {
-                cowsay()
+                get_cowsay()
             } else {
                 Ok(v)
             }
@@ -139,7 +118,7 @@ fn cowsay() -> io::Result<String> {
 }
 
 async fn message_cowsay(ctx: Arc<Context>) {
-    match cowsay() {
+    match get_cowsay() {
         Ok(cowsay) => {
             let message = ChannelId(1078089397972500481)
                 .say(&ctx, format!("```{}```", cowsay))
@@ -153,11 +132,36 @@ async fn message_cowsay(ctx: Arc<Context>) {
 }
 
 async fn set_status_to_fortune(ctx: Arc<Context>) {
-    match fortune() {
+    match get_fortune() {
         Ok(v) => ctx.set_activity(Activity::playing(v)).await,
         Err(e) => error!("Error executing commands: {:?}", e),
     }
 }
+
+#[command]
+async fn fortune(ctx: &Context, msg: &Message) -> CommandResult {
+    match get_cowsay() {
+        Ok(v) => {
+            msg.reply(&ctx.http, format!("```{}```", v)).await?;
+        }
+        Err(e) => {
+            error!("Error executing commands: {:?}", e);
+            msg.reply(&ctx.http, "Something went wrong executing cowsay!")
+                .await?;
+        }
+    }
+    Ok(())
+}
+
+pub struct ShardManagerContainer;
+
+impl TypeMapKey for ShardManagerContainer {
+    type Value = Arc<Mutex<ShardManager>>;
+}
+
+#[group]
+#[commands(fortune)]
+struct General;
 
 #[tokio::main]
 async fn main() {
@@ -167,16 +171,47 @@ async fn main() {
 
     let token = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
 
+    let http = Http::new(&token);
+
+    let (owners, _bot_id) = match http.get_current_application_info().await {
+        Ok(info) => {
+            let mut owners = HashSet::new();
+            owners.insert(info.owner.id);
+
+            (owners, info.id)
+        }
+        Err(why) => panic!("Could not access application info: {:?}", why),
+    };
+
+    let framework = StandardFramework::new()
+        .configure(|c| c.owners(owners).prefix("~"))
+        .group(&GENERAL_GROUP);
+
     let intents = GatewayIntents::GUILD_MESSAGES
         | GatewayIntents::DIRECT_MESSAGES
         | GatewayIntents::GUILDS
         | GatewayIntents::MESSAGE_CONTENT;
     let mut client = Client::builder(&token, intents)
+        .framework(framework)
         .event_handler(Handler {
             is_loop_running: AtomicBool::new(false),
         })
         .await
         .expect("Error creating client");
+
+    {
+        let mut data = client.data.write().await;
+        data.insert::<ShardManagerContainer>(client.shard_manager.clone());
+    }
+
+    let shard_manager = client.shard_manager.clone();
+
+    tokio::spawn(async move {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("Could not register ctrl+c handler");
+        shard_manager.lock().await.shutdown_all().await;
+    });
 
     if let Err(why) = client.start().await {
         error!("Client error: {:?}", why);
