@@ -11,7 +11,7 @@ use std::{
 
 use serenity::{
     async_trait,
-    model::prelude::{ChannelId, GuildId, Message, Ready},
+    model::prelude::{Activity, ChannelId, GuildId, Message, Ready},
     prelude::{Context, EventHandler, GatewayIntents},
     Client,
 };
@@ -74,17 +74,32 @@ impl EventHandler for Handler {
             });
 
             // And of course, we can run more than one thread at different timings.
-            // let ctx2 = Arc::clone(&ctx);
-            // tokio::spawn(async move {
-            //     loop {
-            //         set_status_to_fortune(Arc::clone(&ctx2)).await;
-            //         tokio::time::sleep(Duration::from_secs(60)).await;
-            //     }
-            // });
+            let ctx2 = Arc::clone(&ctx);
+            tokio::spawn(async move {
+                loop {
+                    set_status_to_fortune(Arc::clone(&ctx2)).await;
+                    tokio::time::sleep(Duration::from_secs(60)).await;
+                }
+            });
 
             // Now that the loop is running, we set the bool to true
             self.is_loop_running.swap(true, Ordering::Relaxed);
         }
+    }
+}
+
+fn fortune() -> io::Result<String> {
+    let result = Command::new("fortune").output()?.stdout;
+
+    match String::from_utf8(result) {
+        Ok(v) => {
+            if v.len() > 2000 {
+                fortune()
+            } else {
+                Ok(v)
+            }
+        }
+        Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
     }
 }
 
@@ -132,6 +147,13 @@ async fn message_cowsay(ctx: Arc<Context>) {
                 eprintln!("Error sending message: {:?}", why);
             }
         }
+        Err(e) => eprintln!("Error executing commands: {:?}", e),
+    }
+}
+
+async fn set_status_to_fortune(ctx: Arc<Context>) {
+    match fortune() {
+        Ok(v) => ctx.set_activity(Activity::playing(v)).await,
         Err(e) => eprintln!("Error executing commands: {:?}", e),
     }
 }
