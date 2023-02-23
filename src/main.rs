@@ -153,6 +153,16 @@ async fn fortune(ctx: &Context, msg: &Message) -> CommandResult {
     Ok(())
 }
 
+#[command]
+async fn explode(ctx: &Context, msg: &Message) -> CommandResult {
+    msg.reply(
+        &ctx.http,
+        "https://tenor.com/view/explode-boom-explosion-gif-17473499",
+    )
+    .await?;
+    Ok(())
+}
+
 pub struct ShardManagerContainer;
 
 impl TypeMapKey for ShardManagerContainer {
@@ -160,7 +170,7 @@ impl TypeMapKey for ShardManagerContainer {
 }
 
 #[group]
-#[commands(fortune)]
+#[commands(fortune, explode)]
 struct General;
 
 #[tokio::main]
