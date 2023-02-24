@@ -1,8 +1,6 @@
 use std::{
     collections::HashSet,
-    env, io,
-    process::{Command, Stdio},
-    str,
+    env,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -13,21 +11,21 @@ use std::{
 use serenity::{
     async_trait,
     client::bridge::gateway::ShardManager,
-    framework::{
-        standard::{
-            macros::{command, group},
-            CommandResult,
-        },
-        StandardFramework,
-    },
+    framework::{standard::macros::group, StandardFramework},
     http::Http,
-    model::prelude::{Activity, ChannelId, GuildId, Message, Ready},
+    model::prelude::{Activity, ChannelId, GuildId, Ready},
     prelude::{Context, EventHandler, GatewayIntents, Mutex, TypeMapKey},
     Client,
 };
 
 use chrono::{offset::Utc, Timelike};
 use tracing::{error, info};
+
+mod commands;
+mod utils;
+
+use commands::explode::*;
+use commands::fortune::*;
 
 struct Handler {
     is_loop_running: AtomicBool,
@@ -68,57 +66,8 @@ impl EventHandler for Handler {
     }
 }
 
-fn get_fortune() -> io::Result<String> {
-    let result = Command::new("fortune").output()?.stdout;
-
-    match String::from_utf8(result) {
-        Ok(v) => {
-            if v.len() > 2000 {
-                get_fortune()
-            } else {
-                Ok(v)
-            }
-        }
-        Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
-    }
-}
-
-fn get_cowsay() -> io::Result<String> {
-    let cowdir = Command::new("ls")
-        .arg("/usr/share/cows")
-        .stdout(Stdio::piped())
-        .spawn()?;
-    let random_cow = Command::new("shuf")
-        .arg("-n1")
-        .stdin(cowdir.stdout.unwrap())
-        .output()?
-        .stdout;
-    let random_cow = match str::from_utf8(&random_cow) {
-        Ok(v) => v,
-        Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
-    };
-
-    let fortune = Command::new("fortune").stdout(Stdio::piped()).spawn()?;
-    let result = Command::new("cowsay")
-        .args(["-f", random_cow.trim()])
-        .stdin(fortune.stdout.unwrap())
-        .output()?
-        .stdout;
-
-    match String::from_utf8(result) {
-        Ok(v) => {
-            if v.len() > 2000 {
-                get_cowsay()
-            } else {
-                Ok(v)
-            }
-        }
-        Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
-    }
-}
-
 async fn message_cowsay(ctx: Arc<Context>) {
-    match get_cowsay() {
+    match utils::cowsay::cowsay() {
         Ok(cowsay) => {
             let message = ChannelId(1078089397972500481)
                 .say(&ctx, format!("```{}```", cowsay))
@@ -132,35 +81,10 @@ async fn message_cowsay(ctx: Arc<Context>) {
 }
 
 async fn set_status_to_fortune(ctx: Arc<Context>) {
-    match get_fortune() {
+    match utils::fortune::fortune() {
         Ok(v) => ctx.set_activity(Activity::playing(v)).await,
         Err(e) => error!("Error executing commands: {:?}", e),
     }
-}
-
-#[command]
-async fn fortune(ctx: &Context, msg: &Message) -> CommandResult {
-    match get_cowsay() {
-        Ok(v) => {
-            msg.reply(&ctx.http, format!("```{}```", v)).await?;
-        }
-        Err(e) => {
-            error!("Error executing commands: {:?}", e);
-            msg.reply(&ctx.http, "Something went wrong executing cowsay!")
-                .await?;
-        }
-    }
-    Ok(())
-}
-
-#[command]
-async fn explode(ctx: &Context, msg: &Message) -> CommandResult {
-    msg.reply(
-        &ctx.http,
-        "https://tenor.com/view/explode-boom-explosion-gif-17473499",
-    )
-    .await?;
-    Ok(())
 }
 
 pub struct ShardManagerContainer;
