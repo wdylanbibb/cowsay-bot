@@ -1,10 +1,41 @@
 use std::{
-    io,
+    fs, io,
     process::{Command, Stdio},
     str,
 };
 
-pub fn cowsay() -> io::Result<String> {
+pub fn get_cows() -> Vec<String> {
+    let paths = fs::read_dir("/usr/share/cows").unwrap();
+    paths
+        .map(|d| {
+            d.expect("Expected valid file path")
+                .path()
+                .display()
+                .to_string()
+        })
+        .collect()
+}
+
+pub fn cowsay(msg: &String, file: Option<&String>) -> io::Result<String> {
+    let mut binding = Command::new("cowsay");
+    let mut result = &mut binding;
+    if let Some(cow) = file {
+        result = result.args(["-f", cow, "--"]);
+    }
+    let result = result.arg(msg).output()?.stdout;
+    match String::from_utf8(result) {
+        Ok(v) => {
+            if v.len() > 2000 {
+                cowsay(msg, file)
+            } else {
+                Ok(v)
+            }
+        }
+        Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
+    }
+}
+
+pub fn random_cowsay_fortune() -> io::Result<String> {
     let cowdir = Command::new("ls")
         .arg("/usr/share/cows")
         .stdout(Stdio::piped())
@@ -29,7 +60,7 @@ pub fn cowsay() -> io::Result<String> {
     match String::from_utf8(result) {
         Ok(v) => {
             if v.len() > 2000 {
-                cowsay()
+                random_cowsay_fortune()
             } else {
                 Ok(v)
             }

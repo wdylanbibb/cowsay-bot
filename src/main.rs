@@ -13,7 +13,10 @@ use serenity::{
     client::bridge::gateway::ShardManager,
     framework::{standard::macros::group, StandardFramework},
     http::Http,
-    model::prelude::{Activity, ChannelId, GuildId, Ready},
+    model::prelude::{
+        interaction::{Interaction, InteractionResponseType},
+        Activity, ChannelId, GuildId, Ready,
+    },
     prelude::{Context, EventHandler, GatewayIntents, Mutex, TypeMapKey},
     Client,
 };
@@ -24,8 +27,8 @@ use tracing::{error, info};
 mod commands;
 mod utils;
 
+use commands::cowsay::*;
 use commands::explode::*;
-use commands::fortune::*;
 
 struct Handler {
     is_loop_running: AtomicBool,
@@ -33,8 +36,22 @@ struct Handler {
 
 #[async_trait]
 impl EventHandler for Handler {
-    async fn ready(&self, _ctx: Context, ready: Ready) {
+    async fn ready(&self, ctx: Context, ready: Ready) {
         info!("{} is connected!", ready.user.name);
+
+        let guild_id = GuildId(
+            env::var("GUILD_ID")
+                .expect("Expected GUILD_ID in environment")
+                .parse()
+                .expect("GUILD_ID must be an integer"),
+        );
+
+        let _ = GuildId::set_application_commands(&guild_id, &ctx.http, |commands| {
+            commands
+                .create_application_command(|command| commands::cowsay::register(command))
+                .create_application_command(|command| commands::ping::register(command))
+        })
+        .await;
     }
 
     async fn cache_ready(&self, ctx: Context, _guilds: Vec<GuildId>) {
@@ -64,10 +81,31 @@ impl EventHandler for Handler {
             self.is_loop_running.swap(true, Ordering::Relaxed);
         }
     }
+
+    async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
+        if let Interaction::ApplicationCommand(command) = interaction {
+            let content = match command.data.name.as_str() {
+                "cowsay" => commands::cowsay::run(&command.data.options),
+                "ping" => commands::ping::run(&command.data.options),
+                _ => "not implemented :(".to_string(),
+            };
+
+            if let Err(why) = command
+                .create_interaction_response(&ctx.http, |response| {
+                    response
+                        .kind(InteractionResponseType::ChannelMessageWithSource)
+                        .interaction_response_data(|message| message.content(content))
+                })
+                .await
+            {
+                info!("Cannot respond to slash command: {}", why);
+            }
+        }
+    }
 }
 
 async fn message_cowsay(ctx: Arc<Context>) {
-    match utils::cowsay::cowsay() {
+    match utils::cowsay::random_cowsay_fortune() {
         Ok(cowsay) => {
             let message = ChannelId(1078089397972500481)
                 .say(&ctx, format!("```{}```", cowsay))
@@ -94,7 +132,7 @@ impl TypeMapKey for ShardManagerContainer {
 }
 
 #[group]
-#[commands(fortune, explode)]
+#[commands(cowsay, explode)]
 struct General;
 
 #[tokio::main]

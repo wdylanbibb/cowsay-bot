@@ -1,2 +1,3 @@
+pub mod cowsay;
 pub mod explode;
-pub mod fortune;
+pub mod ping;

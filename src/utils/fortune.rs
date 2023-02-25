@@ -1,3 +1,5 @@
+use std::{io, process::Command};
+
 pub fn fortune() -> io::Result<String> {
     let result = Command::new("fortune").output()?.stdout;
 

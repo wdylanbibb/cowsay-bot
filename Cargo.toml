@@ -10,6 +10,7 @@ dotenv = "*"
 tracing = "*"
 tracing-subscriber = "*"
 sys-info = "*"
+rand = "*"
 
 [dependencies.chrono]
 default-features = false
@@ -21,5 +22,5 @@ features = ["macros", "signal", "rt-multi-thread"]
 version = "*"
 
 [dependencies.serenity]
-features = ["cache", "framework", "standard_framework", "rustls_backend"]
+features = ["cache", "framework", "standard_framework", "rustls_backend", "client", "gateway", "model", "collector"]
 version = "*"
