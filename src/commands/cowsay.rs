@@ -29,14 +29,26 @@ pub async fn cowsay(ctx: &Context, msg: &Message) -> CommandResult {
             }
             Err(e) => {
                 error!("Error executing cowsay: {:?}", e);
-                msg.reply(&ctx.http, "Something went wrong executing cowsay!")
-                    .await?;
+                msg.reply(
+                    &ctx.http,
+                    format!(
+                        "Something went wrong executing cowsay! Error message: {}",
+                        e
+                    ),
+                )
+                .await?;
             }
         },
         Err(e) => {
             error!("Error executing fortune: {:?}", e);
-            msg.reply(&ctx.http, "Something went wrong executing fortune!")
-                .await?;
+            msg.reply(
+                &ctx.http,
+                format!(
+                    "Something went wrong executing fortune! Error message: {}",
+                    e
+                ),
+            )
+            .await?;
         }
     }
     Ok(())
@@ -72,7 +84,11 @@ pub fn run(options: &[CommandDataOption]) -> String {
             Ok(s) => s,
             Err(e) => {
                 error!("Error executing fortune: {:?}", e);
-                return "Something went wrong executing fortune!".to_string();
+                return format!(
+                    "Something went wrong executing fortune! Error message: {}",
+                    e
+                )
+                .to_string();
             }
         },
     };
@@ -100,7 +116,11 @@ pub fn run(options: &[CommandDataOption]) -> String {
         Ok(s) => format!("```{}```", s),
         Err(e) => {
             error!("Error executing cowsay: {:?}", e);
-            return "Something went wrong executing cowsay!".to_string();
+            return format!(
+                "Something went wrong executing cowsay! Error message: {}",
+                e
+            )
+            .to_string();
         }
     }
 }

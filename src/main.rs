@@ -14,6 +14,7 @@ use serenity::{
     framework::{standard::macros::group, StandardFramework},
     http::Http,
     model::prelude::{
+        command::Command,
         interaction::{Interaction, InteractionResponseType},
         Activity, ChannelId, GuildId, Ready,
     },
@@ -29,6 +30,7 @@ mod utils;
 
 use commands::cowsay::*;
 use commands::explode::*;
+use commands::set_channel::*;
 
 struct Handler {
     is_loop_running: AtomicBool,
@@ -39,17 +41,27 @@ impl EventHandler for Handler {
     async fn ready(&self, ctx: Context, ready: Ready) {
         info!("{} is connected!", ready.user.name);
 
-        let guild_id = GuildId(
-            env::var("GUILD_ID")
-                .expect("Expected GUILD_ID in environment")
-                .parse()
-                .expect("GUILD_ID must be an integer"),
-        );
+        // let guild_id = GuildId(
+        //     env::var("GUILD_ID")
+        //         .expect("Expected GUILD_ID in environment")
+        //         .parse()
+        //         .expect("GUILD_ID must be an integer"),
+        // );
 
-        let _ = GuildId::set_application_commands(&guild_id, &ctx.http, |commands| {
-            commands
-                .create_application_command(|command| commands::cowsay::register(command))
-                .create_application_command(|command| commands::ping::register(command))
+        // let _ = GuildId::set_application_commands(&guild_id, &ctx.http, |commands| {
+        //     commands
+        //         .create_application_command(|command| commands::cowsay::register(command))
+        //         .create_application_command(|command| commands::ping::register(command))
+        // })
+        // .await;
+
+        let _ = Command::create_global_application_command(&ctx.http, |command| {
+            commands::cowsay::register(command)
+        })
+        .await;
+
+        let _ = Command::create_global_application_command(&ctx.http, |command| {
+            commands::ping::register(command)
         })
         .await;
     }
@@ -132,7 +144,7 @@ impl TypeMapKey for ShardManagerContainer {
 }
 
 #[group]
-#[commands(cowsay, explode)]
+#[commands(cowsay, explode, set_channel)]
 struct General;
 
 #[tokio::main]
