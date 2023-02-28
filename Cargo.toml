@@ -12,6 +12,14 @@ tracing-subscriber = "*"
 sys-info = "*"
 rand = "*"
 
+[dependencies.bonsaidb]
+features = ["local"]
+version = "*"
+
+[dependencies.serde]
+features = ["derive"]
+version = "*"
+
 [dependencies.chrono]
 default-features = false
 features = ["clock"]

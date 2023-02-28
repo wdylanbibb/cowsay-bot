@@ -8,6 +8,13 @@ use std::{
     time::Duration,
 };
 
+use bonsaidb::{
+    core::schema::SerializedCollection,
+    local::{
+        config::{Builder, StorageConfiguration},
+        Database,
+    },
+};
 use serenity::{
     async_trait,
     client::bridge::gateway::ShardManager,
@@ -28,6 +35,8 @@ use tracing::{error, info};
 mod commands;
 mod utils;
 
+mod db;
+
 use commands::cowsay::*;
 use commands::explode::*;
 use commands::set_channel::*;
@@ -41,20 +50,6 @@ impl EventHandler for Handler {
     async fn ready(&self, ctx: Context, ready: Ready) {
         info!("{} is connected!", ready.user.name);
 
-        // let guild_id = GuildId(
-        //     env::var("GUILD_ID")
-        //         .expect("Expected GUILD_ID in environment")
-        //         .parse()
-        //         .expect("GUILD_ID must be an integer"),
-        // );
-
-        // let _ = GuildId::set_application_commands(&guild_id, &ctx.http, |commands| {
-        //     commands
-        //         .create_application_command(|command| commands::cowsay::register(command))
-        //         .create_application_command(|command| commands::ping::register(command))
-        // })
-        // .await;
-
         let _ = Command::create_global_application_command(&ctx.http, |command| {
             commands::cowsay::register(command)
         })
@@ -66,17 +61,35 @@ impl EventHandler for Handler {
         .await;
     }
 
-    async fn cache_ready(&self, ctx: Context, _guilds: Vec<GuildId>) {
+    async fn cache_ready(&self, ctx: Context, guilds: Vec<GuildId>) {
         info!("Cache build successfully!");
 
         let ctx = Arc::new(ctx);
+        let guilds = Arc::new(guilds);
 
         if !self.is_loop_running.load(Ordering::Relaxed) {
             let ctx1 = Arc::clone(&ctx);
+            let guilds1 = Arc::clone(&guilds);
             tokio::spawn(async move {
                 loop {
                     if Utc::now().time().minute() == 0 {
-                        message_cowsay(Arc::clone(&ctx1)).await;
+                        let db = Database::open::<db::FortuneChannel>(StorageConfiguration::new(
+                            "fortune-channels.bonsaidb",
+                        ))
+                        .unwrap();
+
+                        for guild in guilds1.iter() {
+                            if let Some(channel) = db::FortuneChannel::get(guild.0, &db)
+                                .expect("error accessing database")
+                            {
+                                info!("Found channel {channel:?} in guild {guild:?}");
+                                let channel = channel.contents.channel;
+
+                                message_cowsay(Arc::clone(&ctx1), channel).await;
+                            } else {
+                                info!("Could not find db entry {guild:?}");
+                            }
+                        }
                     }
                     tokio::time::sleep(Duration::from_secs(60)).await;
                 }
@@ -116,12 +129,10 @@ impl EventHandler for Handler {
     }
 }
 
-async fn message_cowsay(ctx: Arc<Context>) {
+async fn message_cowsay(ctx: Arc<Context>, channel: ChannelId) {
     match utils::cowsay::random_cowsay_fortune() {
         Ok(cowsay) => {
-            let message = ChannelId(1078089397972500481)
-                .say(&ctx, format!("```{}```", cowsay))
-                .await;
+            let message = channel.say(&ctx, format!("```{}```", cowsay)).await;
             if let Err(why) = message {
                 error!("Error sending message: {:?}", why);
             }
@@ -148,7 +159,7 @@ impl TypeMapKey for ShardManagerContainer {
 struct General;
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), bonsaidb::core::Error> {
     dotenv::dotenv().expect("Failed to find .env file");
 
     tracing_subscriber::fmt::init();
@@ -200,4 +211,6 @@ async fn main() {
     if let Err(why) = client.start().await {
         error!("Client error: {:?}", why);
     }
+
+    Ok(())
 }
