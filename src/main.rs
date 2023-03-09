@@ -8,13 +8,7 @@ use std::{
     time::Duration,
 };
 
-use bonsaidb::{
-    core::schema::SerializedCollection,
-    local::{
-        config::{Builder, StorageConfiguration},
-        Database,
-    },
-};
+use bonsaidb::core::schema::SerializedCollection;
 use serenity::{
     async_trait,
     client::bridge::gateway::ShardManager,
@@ -61,34 +55,26 @@ impl EventHandler for Handler {
         .await;
     }
 
-    async fn cache_ready(&self, ctx: Context, guilds: Vec<GuildId>) {
+    async fn cache_ready(&self, ctx: Context, _guilds: Vec<GuildId>) {
         info!("Cache build successfully!");
 
         let ctx = Arc::new(ctx);
-        let guilds = Arc::new(guilds);
 
         if !self.is_loop_running.load(Ordering::Relaxed) {
             let ctx1 = Arc::clone(&ctx);
-            let guilds1 = Arc::clone(&guilds);
             tokio::spawn(async move {
                 loop {
                     if Utc::now().time().minute() == 0 {
-                        let db = Database::open::<db::FortuneChannel>(StorageConfiguration::new(
-                            "fortune-channels.bonsaidb",
-                        ))
-                        .unwrap();
+                        let db = db::open().expect("error accessing database");
 
-                        for guild in guilds1.iter() {
-                            if let Some(channel) = db::FortuneChannel::get(guild.0, &db)
-                                .expect("error accessing database")
-                            {
-                                info!("Found channel {channel:?} in guild {guild:?}");
-                                let channel = channel.contents.channel;
+                        for guild_doc in db::FortuneChannel::all(&db)
+                            .query()
+                            .expect("error accessing channels")
+                        {
+                            info!("Found guild document {guild_doc:?} in database");
+                            let channel = guild_doc.contents.channel;
 
-                                message_cowsay(Arc::clone(&ctx1), channel).await;
-                            } else {
-                                info!("Could not find db entry {guild:?}");
-                            }
+                            message_cowsay(Arc::clone(&ctx1), channel).await;
                         }
                     }
                     tokio::time::sleep(Duration::from_secs(60)).await;
@@ -155,7 +141,7 @@ impl TypeMapKey for ShardManagerContainer {
 }
 
 #[group]
-#[commands(cowsay, explode, set_channel)]
+#[commands(cowsay, explode, set_channel, remove_channel)]
 struct General;
 
 #[tokio::main]

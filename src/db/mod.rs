@@ -1,4 +1,10 @@
-use bonsaidb::core::schema::Collection;
+use bonsaidb::{
+    core::schema::Collection,
+    local::{
+        config::{Builder, StorageConfiguration},
+        Database, Error,
+    },
+};
 use serde::{Deserialize, Serialize};
 use serenity::model::prelude::{ChannelId, GuildId};
 
@@ -13,4 +19,8 @@ impl FortuneChannel {
     pub fn new(guild: GuildId, channel: ChannelId) -> Self {
         FortuneChannel { guild, channel }
     }
+}
+
+pub fn open() -> Result<Database, Error> {
+    Database::open::<FortuneChannel>(StorageConfiguration::new("fortune-channels.bonsaidb"))
 }
