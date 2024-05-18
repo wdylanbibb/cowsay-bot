@@ -152,7 +152,7 @@ async fn main() -> Result<(), bonsaidb::core::Error> {
         .setup(move |ctx, _ready, framework| {
             Box::pin(async move {
                 poise::builtins::register_globally(ctx, &framework.options().commands).await?;
-                Ok(crate::commands::Data {})
+                Ok(())
             })
         })
         .build();
