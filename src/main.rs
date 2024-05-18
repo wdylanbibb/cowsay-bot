@@ -11,15 +11,10 @@ use std::{
 use bonsaidb::core::schema::SerializedCollection;
 use serenity::{
     async_trait,
-    client::bridge::gateway::ShardManager,
-    framework::{standard::macros::group, StandardFramework},
+    gateway::{ActivityData, ShardManager},
     http::Http,
-    model::prelude::{
-        command::Command,
-        interaction::{Interaction, InteractionResponseType},
-        Activity, ChannelId, GuildId, Ready,
-    },
-    prelude::{Context, EventHandler, GatewayIntents, Mutex, TypeMapKey},
+    model::prelude::{ChannelId, GuildId, Ready},
+    prelude::{Context, EventHandler, GatewayIntents, TypeMapKey},
     Client,
 };
 
@@ -31,9 +26,9 @@ mod utils;
 
 mod db;
 
-use commands::cowsay::*;
-use commands::explode::*;
-use commands::set_channel::*;
+use commands::cowsay;
+
+use crate::commands::{set_channel, Error};
 
 struct Handler {
     is_loop_running: AtomicBool,
@@ -41,18 +36,8 @@ struct Handler {
 
 #[async_trait]
 impl EventHandler for Handler {
-    async fn ready(&self, ctx: Context, ready: Ready) {
+    async fn ready(&self, _ctx: Context, ready: Ready) {
         info!("{} is connected!", ready.user.name);
-
-        let _ = Command::create_global_application_command(&ctx.http, |command| {
-            commands::cowsay::register(command)
-        })
-        .await;
-
-        let _ = Command::create_global_application_command(&ctx.http, |command| {
-            commands::ping::register(command)
-        })
-        .await;
     }
 
     async fn cache_ready(&self, ctx: Context, _guilds: Vec<GuildId>) {
@@ -92,27 +77,6 @@ impl EventHandler for Handler {
             self.is_loop_running.swap(true, Ordering::Relaxed);
         }
     }
-
-    async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
-        if let Interaction::ApplicationCommand(command) = interaction {
-            let content = match command.data.name.as_str() {
-                "cowsay" => commands::cowsay::run(&command.data.options),
-                "ping" => commands::ping::run(&command.data.options),
-                _ => "not implemented :(".to_string(),
-            };
-
-            if let Err(why) = command
-                .create_interaction_response(&ctx.http, |response| {
-                    response
-                        .kind(InteractionResponseType::ChannelMessageWithSource)
-                        .interaction_response_data(|message| message.content(content))
-                })
-                .await
-            {
-                info!("Cannot respond to slash command: {}", why);
-            }
-        }
-    }
 }
 
 async fn message_cowsay(ctx: Arc<Context>, channel: ChannelId) {
@@ -129,7 +93,8 @@ async fn message_cowsay(ctx: Arc<Context>, channel: ChannelId) {
 
 async fn set_status_to_fortune(ctx: Arc<Context>) {
     match utils::fortune::fortune() {
-        Ok(v) => ctx.set_activity(Activity::playing(v)).await,
+        // Ok(v) => ctx.set_activity(Activity::playing(v)).await,
+        Ok(v) => ctx.set_activity(Some(ActivityData::playing(v))),
         Err(e) => error!("Error executing commands: {:?}", e),
     }
 }
@@ -137,12 +102,14 @@ async fn set_status_to_fortune(ctx: Arc<Context>) {
 pub struct ShardManagerContainer;
 
 impl TypeMapKey for ShardManagerContainer {
-    type Value = Arc<Mutex<ShardManager>>;
+    type Value = Arc<ShardManager>;
 }
 
-#[group]
-#[commands(cowsay, explode, set_channel, remove_channel)]
-struct General;
+#[poise::command(prefix_command)]
+pub async fn register(ctx: crate::commands::Context<'_>) -> Result<(), Error> {
+    poise::builtins::register_application_commands_buttons(ctx).await?;
+    Ok(())
+}
 
 #[tokio::main]
 async fn main() -> Result<(), bonsaidb::core::Error> {
@@ -154,19 +121,41 @@ async fn main() -> Result<(), bonsaidb::core::Error> {
 
     let http = Http::new(&token);
 
-    let (owners, _bot_id) = match http.get_current_application_info().await {
+    let (_owners, _bot_id) = match http.get_current_application_info().await {
         Ok(info) => {
             let mut owners = HashSet::new();
-            owners.insert(info.owner.id);
+            if let Some(owner) = &info.owner {
+                owners.insert(owner.id);
+            }
 
             (owners, info.id)
         }
         Err(why) => panic!("Could not access application info: {:?}", why),
     };
 
-    let framework = StandardFramework::new()
-        .configure(|c| c.owners(owners).prefix("~"))
-        .group(&GENERAL_GROUP);
+    info!("{:?}", cowsay::cowsay().parameters[0].type_setter);
+
+    let framework = poise::Framework::builder()
+        .options(poise::FrameworkOptions {
+            commands: vec![
+                cowsay::cowsay(),
+                set_channel::set_channel(),
+                set_channel::remove_channel(),
+                register(),
+            ],
+            prefix_options: poise::PrefixFrameworkOptions {
+                prefix: Some("~".into()),
+                ..Default::default()
+            },
+            ..Default::default()
+        })
+        .setup(move |ctx, _ready, framework| {
+            Box::pin(async move {
+                poise::builtins::register_globally(ctx, &framework.options().commands).await?;
+                Ok(crate::commands::Data {})
+            })
+        })
+        .build();
 
     let intents = GatewayIntents::GUILD_MESSAGES
         | GatewayIntents::DIRECT_MESSAGES
@@ -191,7 +180,7 @@ async fn main() -> Result<(), bonsaidb::core::Error> {
         tokio::signal::ctrl_c()
             .await
             .expect("Could not register ctrl+c handler");
-        shard_manager.lock().await.shutdown_all().await;
+        shard_manager.shutdown_all().await;
     });
 
     if let Err(why) = client.start().await {

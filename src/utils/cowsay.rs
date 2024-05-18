@@ -1,20 +1,8 @@
 use std::{
-    fs, io,
+    io,
     process::{Command, Stdio},
     str,
 };
-
-pub fn get_cows() -> Vec<String> {
-    let paths = fs::read_dir("/usr/share/cows").unwrap();
-    paths
-        .map(|d| {
-            d.expect("Expected valid file path")
-                .path()
-                .display()
-                .to_string()
-        })
-        .collect()
-}
 
 pub fn cowsay(msg: &String, file: Option<&String>) -> io::Result<String> {
     let mut binding = Command::new("cowsay");
@@ -37,7 +25,7 @@ pub fn cowsay(msg: &String, file: Option<&String>) -> io::Result<String> {
 
 pub fn random_cowsay_fortune() -> io::Result<String> {
     let cowdir = Command::new("ls")
-        .arg("/usr/share/cows")
+        .arg("/usr/share/cowsay/cows")
         .stdout(Stdio::piped())
         .spawn()?;
     let random_cow = Command::new("shuf")
