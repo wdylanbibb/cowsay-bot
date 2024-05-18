@@ -1,7 +1,7 @@
 use std::{io, process::Command};
 
 pub fn fortune() -> io::Result<String> {
-    let result = Command::new("fortune").output()?.stdout;
+    let result = Command::new("fortune").args(["-e"]).output()?.stdout;
 
     match String::from_utf8(result) {
         Ok(v) => {

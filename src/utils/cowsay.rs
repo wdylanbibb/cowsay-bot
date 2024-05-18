@@ -8,7 +8,7 @@ pub fn cowsay(msg: &String, file: Option<&String>) -> io::Result<String> {
     let mut binding = Command::new("cowsay");
     let mut result = &mut binding;
     if let Some(cow) = file {
-        result = result.args(["-f", cow, "--"]);
+        result = result.args(["-n", "-f", cow, "--"]);
     }
     let result = result.arg(msg).output()?.stdout;
     match String::from_utf8(result) {
