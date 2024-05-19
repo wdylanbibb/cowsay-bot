@@ -92,7 +92,7 @@ async fn message_cowsay(ctx: Arc<Context>, channel: ChannelId) {
 }
 
 async fn set_status_to_fortune(ctx: Arc<Context>) {
-    match utils::fortune::fortune() {
+    match utils::fortune::fortune(200) {
         // Ok(v) => ctx.set_activity(Activity::playing(v)).await,
         Ok(v) => ctx.set_activity(Some(ActivityData::playing(v))),
         Err(e) => error!("Error executing commands: {:?}", e),
@@ -115,7 +115,8 @@ pub async fn register(ctx: crate::commands::Context<'_>) -> Result<(), Error> {
 async fn main() -> Result<(), bonsaidb::core::Error> {
     dotenv::dotenv().expect("Failed to find .env file");
 
-    tracing_subscriber::fmt::init();
+    // tracing_subscriber::fmt::init();
+    tracing_subscriber::fmt().with_ansi(false).init();
 
     let token = env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
 
@@ -133,8 +134,7 @@ async fn main() -> Result<(), bonsaidb::core::Error> {
         Err(why) => panic!("Could not access application info: {:?}", why),
     };
 
-    info!("{:?}", cowsay::cowsay().parameters[0].type_setter);
-
+    error!("Test error");
     let framework = poise::Framework::builder()
         .options(poise::FrameworkOptions {
             commands: vec![

@@ -68,7 +68,6 @@ pub fn cmd_enum(input: TokenStream) -> TokenStream {
         .trim()
         .split('\n')
         .map(|cow| {
-            println!("{:?}", cow);
             let ret = String::from_utf8(
                 std::process::Command::new("sh")
                     .arg("-c")

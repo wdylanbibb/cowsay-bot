@@ -8,7 +8,7 @@ pub fn cowsay(msg: &String, file: Option<&String>) -> io::Result<String> {
     let mut binding = Command::new("cowsay");
     let mut result = &mut binding;
     if let Some(cow) = file {
-        result = result.args(["-n", "-f", cow, "--"]);
+        result = result.args(["-f", cow, "--"]);
     }
     let result = result.arg(msg).output()?.stdout;
     match String::from_utf8(result) {
@@ -38,7 +38,10 @@ pub fn random_cowsay_fortune() -> io::Result<String> {
         Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
     };
 
-    let fortune = Command::new("fortune").stdout(Stdio::piped()).spawn()?;
+    let fortune = Command::new("fortune")
+        .args(["-e"])
+        .stdout(Stdio::piped())
+        .spawn()?;
     let result = Command::new("cowsay")
         .args(["-f", random_cow.trim()])
         .stdin(fortune.stdout.unwrap())
